@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Daily Task Planner</title>
+
+<!-- Our own stylesheet -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+<!--
+  Chart.js via CDN - a beginner-friendly charting library.
+  We just include this one script tag; no build tools or npm needed.
+-->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ============ TOP NAVBAR ============ -->
+<header class="navbar">
+  <div class="navbar-left">
+    <span class="logo">🧠</span>
+    <h1>Smart Daily Task Planner</h1>
+  </div>
+  <button id="addTaskBtn" class="btn btn-primary">+ New Task</button>
+</header>
+
+<main class="container">
+
+  <!-- ============ SMART SUGGESTION BANNER ============ -->
+  <section id="suggestionBanner" class="card suggestion-card hidden">
+    <div class="suggestion-content">
+      <span class="suggestion-tag">✨ Do this next</span>
+      <p id="suggestionTitle" class="suggestion-title"></p>
+      <p id="suggestionReason" class="suggestion-reason"></p>
+    </div>
+    <button id="startFocusFromSuggestion" class="btn btn-white">Start Focus</button>
+  </section>
+
+  <!-- ============ OVERLOAD WARNING BANNER ============ -->
+  <section id="overloadBanner" class="card overload-card hidden">
+    <p>⚠️ <strong>Schedule overload detected</strong></p>
+    <ul id="overloadList"></ul>
+  </section>
+
+  <!-- ============ STAT CARDS ============ -->
+  <section class="stats-grid">
+    <div class="card stat-card">
+      <p class="stat-value" id="statTotal">0</p>
+      <p class="stat-label">Total Tasks</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-value" id="statCompleted">0</p>
+      <p class="stat-label">Completed</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-value" id="statPending">0</p>
+      <p class="stat-label">Pending</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-value" id="statOverdue">0</p>
+      <p class="stat-label">Overdue</p>
+    </div>
+  </section>
+
+  <!-- ============ DASHBOARD: SCORE + CHARTS ============ -->
+  <section class="dashboard-grid">
+    <div class="card score-card">
+      <p class="card-title">Today's Productivity Score</p>
+      <div class="score-circle-wrap">
+        <svg viewBox="0 0 100 100" class="score-ring">
+          <circle cx="50" cy="50" r="42" class="score-ring-bg"></circle>
+          <circle cx="50" cy="50" r="42" class="score-ring-fill" id="scoreRingFill"></circle>
+        </svg>
+        <span id="scoreValue" class="score-value">--</span>
+      </div>
+      <p id="scoreDetail" class="score-detail">No tasks due today yet</p>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Weekly Completion</p>
+      <canvas id="weeklyChart" height="180"></canvas>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Tasks by Priority</p>
+      <canvas id="priorityChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <!-- ============ WEEKLY SUGGESTIONS ============ -->
+  <section class="card">
+    <p class="card-title">💡 This Week's Suggestions</p>
+    <ul id="weeklySuggestions" class="suggestion-list"></ul>
+  </section>
+
+  <!-- ============ FOCUS MODE (POMODORO) ============ -->
+  <section class="card focus-card">
+    <p class="card-title">Focus Mode</p>
+    <div class="focus-modes">
+      <button class="mode-btn active" data-mode="focus" data-minutes="25">Focus (25m)</button>
+      <button class="mode-btn" data-mode="short" data-minutes="5">Short Break (5m)</button>
+      <button class="mode-btn" data-mode="long" data-minutes="15">Long Break (15m)</button>
+    </div>
+    <div class="timer-display" id="timerDisplay">25:00</div>
+    <div class="timer-controls">
+      <button id="timerStartBtn" class="btn btn-primary">Start</button>
+      <button id="timerResetBtn" class="btn btn-outline">Reset</button>
+    </div>
+    <p class="timer-cycles">Focus sessions completed today: <span id="cyclesCount">0</span></p>
+  </section>
+
+  <!-- ============ TASK FILTERS ============ -->
+  <section class="filters">
+    <select id="filterStatus" class="input">
+      <option value="">All Statuses</option>
+      <option value="pending">Pending</option>
+      <option value="completed">Completed</option>
+    </select>
+    <select id="filterPriority" class="input">
+      <option value="">All Priorities</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+    </select>
+    <input type="text" id="filterSearch" class="input" placeholder="Search tasks...">
+    <button id="smartSortToggle" class="btn btn-outline active">🔥 Smart Sort</button>
+  </section>
+
+  <!-- ============ TASK LIST ============ -->
+  <section id="taskList" class="task-list">
+    <!-- Task cards are inserted here by JavaScript -->
+  </section>
+
+</main>
+
+<!-- ============ ADD / EDIT TASK MODAL ============ -->
+<div id="taskModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">New Task</h3>
+      <button id="closeModalBtn" class="close-btn">&times;</button>
+    </div>
+
+    <form id="taskForm">
+      <input type="hidden" id="taskId">
+
+      <label class="label">Title *</label>
+      <input type="text" id="taskTitle" class="input" placeholder="e.g. Finish DBMS assignment" required>
+
+      <label class="label">Description</label>
+      <textarea id="taskDescription" class="input" rows="2" placeholder="Optional details..."></textarea>
+
+      <div class="form-row">
+        <div>
+          <label class="label">Category</label>
+          <input type="text" id="taskCategory" class="input" placeholder="Study, Work, Personal..." value="General">
+        </div>
+        <div>
+          <label class="label">Priority</label>
+          <select id="taskPriority" class="input">
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="label">Deadline *</label>
+      <input type="datetime-local" id="taskDeadline" class="input" required>
+
+      <div class="modal-actions">
+        <button type="button" id="cancelModalBtn" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveTaskBtn">Create Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast notification for quick feedback messages -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
